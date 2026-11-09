@@ -26,12 +26,12 @@ typedef enum {
     TREE_NOT_FOUND = 7,
 } tree_err_t;
 
-typedef struct {
+typedef struct Node {
     int key;
     node_elem_t data;
-    Node* left;
-    Node* right;
-    Node* head;
+    struct Node* left;
+    struct Node* right;
+    struct Node* head;
 } Node;
 
 typedef struct {

@@ -1,4 +1,5 @@
 #include <stdio.h>
+
 #include "tree.h"
 
 /* VERIFY работает и в release, в отличие от ASSERT */
@@ -18,7 +19,7 @@ static void remove_ok(Tree* t, int key) {
 int main(void) {
     Tree t;
     tree_init(&t);
-    assert_set_hook(tree_dump_hook, &t);   /* любой упавший ассерт сбросит дерево в лог */
+    assert_set_hook(tree_dump_hook, &t); /* любой упавший ассерт сбросит дерево в лог */
 
     /*          50
               /    \
@@ -54,12 +55,12 @@ int main(void) {
     tree_inorder(stdout, &t);
 
     /* удаления: каждый шаг ветка remove */
-    remove_ok(&t, 20);   /* лист */
-    remove_ok(&t, 30);   /* один ребёнок (остался только 40) */
-    remove_ok(&t, 50);   /* корень, два ребёнка, преемник 60 глубже n->right */
-    remove_ok(&t, 60);   /* корень, два ребёнка, преемник 65 глубже n->right */
-    remove_ok(&t, 70);   /* один ребёнок (80) */
-    remove_ok(&t, 65);   /* корень, два ребёнка, преемник 80 = n->right */
+    remove_ok(&t, 20); /* лист */
+    remove_ok(&t, 30); /* один ребёнок (остался только 40) */
+    remove_ok(&t, 50); /* корень, два ребёнка, преемник 60 глубже n->right */
+    remove_ok(&t, 60); /* корень, два ребёнка, преемник 65 глубже n->right */
+    remove_ok(&t, 70); /* один ребёнок (80) */
+    remove_ok(&t, 65); /* корень, два ребёнка, преемник 80 = n->right */
 
     VERIFY(t.size == 2);
 

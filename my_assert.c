@@ -12,7 +12,7 @@ _Noreturn void assert_fail(const char* file, int line,
                            const char* func, const char* expr,
                            const char* fmt, ...) {
     static int in_fail; /* защита от рекурсии */
-    if (!in_fail) abort();
+    if (in_fail) abort();
     in_fail = 1;
 
     FILE* outs[2] = {stderr, fopen("errors.log", "a")};
@@ -33,9 +33,9 @@ _Noreturn void assert_fail(const char* file, int line,
             va_end(ap);
         }
         if (g_hook) {
-            fputs(" --------------------------------- dump ---------------------------------", o);
+            fputs(" --------------------------------- dump ---------------------------------\n", o);
             g_hook(o, g_ctx);
-            fputs(" ------------------------------- end dump -------------------------------", o);
+            fputs(" ------------------------------- end dump -------------------------------\n", o);
         }
         fflush(o);
     }

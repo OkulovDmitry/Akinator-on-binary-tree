@@ -173,7 +173,7 @@ tree_err_t node_inorder(FILE* o, const Node* n) {
     ASSERT(n != NULL);
 
     if (n->left != NULL) node_inorder(o, n->left);
-    fprintf("key: %d\ndata: " NODE_ELEM_FMT "\n\n", n->key, n->data);
+    fprintf(o, "key: %d\ndata: " NODE_ELEM_FMT "\n\n", n->key, n->data);
     if (n->right != NULL) node_inorder(o, n->right);
 
     return TREE_OK;
@@ -203,10 +203,10 @@ Node* tree_max(Node* n) {
 int tree_height(const Node* n) {
     if (!n) return 0;
     int height_left = 0, height_right = 0;
-    if (n->left != NULL)
+    if (n->left)
         height_left = tree_height(n->left);
-    if (n->right != NULL)
+    if (n->right)
         height_right = tree_height(n->right);
 
-    return (height_left > height_right) ? height_left : height_right + 1;
+    return ((height_left > height_right) ? height_left : height_right) + 1;
 }
