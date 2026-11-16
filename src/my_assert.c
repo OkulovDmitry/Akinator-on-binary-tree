@@ -15,7 +15,7 @@ _Noreturn void assert_fail(const char* file, int line,
     if (in_fail) abort();
     in_fail = 1;
 
-    FILE* outs[2] = {stderr, fopen("errors.log", "a")};
+    FILE* outs[3] = {stderr, fopen("errors.log", "a"), fopen("log.html", "a")};
 
     for (int i = 0; i < 2; i++) {
         FILE* o = outs[i];
@@ -39,6 +39,35 @@ _Noreturn void assert_fail(const char* file, int line,
         }
         fflush(o);
     }
+
+    if (outs[2]) {
+        fprintf(outs[2], "<div class=\"error\"><b>ASSERT FAILED: %s</b><br>%s:%d: <code>",
+                expr, file, line);
+
+        // html_escape
+        for (; *expr; expr++) {
+            switch (*expr) {
+                case '&':
+                    fputs("&amp;", outs[2]);
+                    break;
+                case '<':
+                    fputs("&lt;", outs[2]);
+                    break;
+                case '>':
+                    fputs("&gt;", outs[2]);
+                    break;
+                default:
+                    fputc(*expr, outs[2]);
+            }
+        }
+
+        fprintf(outs[2], "</code></div>\n");
+    }
+
     if (outs[1]) fclose(outs[1]);
+    if (outs[2]) fclose(outs[2]);
+
+    system("start chrome \"%CD%\\log.html\"");
+
     abort();
 }

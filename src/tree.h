@@ -8,30 +8,59 @@
 
 #include "my_assert.h"
 
-typedef double node_elem_t;
+//typedef double node_elem_t;
+
+#define GV_MODE ("ORTHO")
 
 #define NODE_ELEM_FMT "%f"
-#define NODE_POISON ((tree_elem_t)0xDEADBEEF)
+#define NODE_POISON ((node_elem_t)0xDEADBEEF)
 
 #define TREE_SEP "=========================================================================================================="
 
 #define TREE_DEBUG
 
-typedef enum { GV_ARCS, GV_ORTHO } gv_mode_t;
+typedef enum { GV_ARCS,
+               GV_ORTHO } gv_mode_t;
 
 typedef enum {
-    TREE_OK        = 0,
+    TREE_OK = 0,
+    // WARNING
     TREE_NULL_PTR  = 1,
-    TREE_NO_MEM    = 2,
-    TREE_DUPLICATE = 3,
-    TREE_CORRUPTED = 4,
-    TREE_WRONG_KEY = 5,
-    NODE_NULL_PTR  = 6,
-    TREE_NOT_FOUND = 7,
+    NODE_NULL_PTR  = 2,
+    TREE_NOT_FOUND = 3,
+    TREE_NO_MEM    = 4,
+    TREE_IO_ERROR  = 5,
+    // ERROR
+    TREE_DUPLICATE    = 100,
+    TREE_WRONG_KEY    = 101,
+    TREE_WRONG_SIZE   = 102,
+    TREE_WRONG_HEAD   = 103,
+    NODE_LEFT_BROKEN  = 104,
+    NODE_RIGHT_BROKEN = 105,
+    TREE_CORRYPTED    = 106,
+    TREE_WRONG_TYPE   = 107,
 } tree_err_t;
+
+typedef enum {
+    INT_TYPE        = 0,
+    DOUBLE_TYPE     = 1,
+    STRING_TYPE     = 2,
+    CHAR_TYPE       = 3,
+    NUMBER_OF_TYPES = 4,
+} node_type;
+
+
+
+typedef union {
+    int int_data;
+    double double_data;
+    char* string_data;
+    char char_data;
+} node_elem_t;
 
 typedef struct Node {
     int key;
+    node_type type;
     node_elem_t data;
     struct Node* left;
     struct Node* right;
@@ -48,7 +77,7 @@ void tree_init(Tree* t);
 void tree_destroy(Tree* t);
 
 /* ---- вставка/удаление узла за O(n) ---- */
-tree_err_t tree_insert(Tree* t, int key, node_elem_t data);
+tree_err_t tree_insert(Tree* t, int key, node_type type, node_elem_t data);
 Node* tree_find(const Tree* t, int key);
 tree_err_t tree_remove_node(Tree* t, Node* n);
 tree_err_t tree_remove(Tree* t, int key);
@@ -63,12 +92,11 @@ void tree_dump(FILE* o, const Tree* t);
 tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, size_t limit);
 tree_err_t tree_verify(const Tree* t);
 
-
 // ---- Дополнительные функции ----
-tree_err_t node_inorder(FILE* o, const Node* n); 
-tree_err_t tree_inorder(FILE* o, const Tree* t); // вывод элементов дерева по возрастанию key
-Node* tree_min(Node* n); // поиск минимального узла (самый левый)
-Node* tree_max(Node* n); // поиск максималного узла (самый правый)
-int tree_height(const Node* n); // нахождение высоты дерева
+tree_err_t node_inorder(FILE* o, const Node* n);
+tree_err_t tree_inorder(FILE* o, const Tree* t);  // вывод элементов дерева по возрастанию key
+Node* tree_min(Node* n);                          // поиск минимального узла (самый левый)
+Node* tree_max(Node* n);                          // поиск максималного узла (самый правый)
+int tree_height(const Node* n);                   // нахождение высоты дерева
 
 #endif
