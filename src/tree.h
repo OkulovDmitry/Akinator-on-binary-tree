@@ -12,14 +12,11 @@
 
 //typedef double node_elem_t;
 
-#define GV_MODE ("ORTHO")
-
 #define TREE_SEP "=========================================================================================================="
 
 #define TREE_DEBUG
 
-#define TREE_GV_ARCS "ARCS"
-#define TREE_GV_ORTHO "ORTHO"
+#define TREE_GV_MODE "ARCS"
 
 typedef enum {
     TREE_OK = 0,
@@ -49,7 +46,7 @@ typedef enum {
     NUMBER_OF_TYPES,
 } node_type;
 
-char* printf_types[NUMBER_OF_TYPES] = {"%s", "%d", "%lf", "%s", "%c"};
+extern const char* printf_types[];
 
 typedef union {
     int int_data;
@@ -83,11 +80,12 @@ tree_err_t tree_remove_node(Tree* t, Node* n);
 tree_err_t tree_remove(Tree* t, int key);
 
 /* ---- отладка ----*/
-void log_init();
+void tree_log_init();
 
 void tree_dump_hook(const char* tree, void* ctx);
 
 void tree_dump(const char* name, const Tree* t);
+tree_err_t tree_dump_graph(const char* base_name, const Tree* tree);
 
 tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, size_t limit);
 tree_err_t tree_verify(const Tree* t);

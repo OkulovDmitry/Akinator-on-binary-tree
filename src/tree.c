@@ -15,6 +15,8 @@
 #define GV_FREE_PTR "#D2992.2"   // указатель free
 #define GV_BAD "#F85149"         // рассогласование
 
+const char* printf_types[NUMBER_OF_TYPES] = {"%s", "%d", "%lf", "%s", "%c"};
+
 const char* tree_strerror(tree_err_t err) {
     switch (err) {
         case TREE_OK:
@@ -251,50 +253,115 @@ if (list->prev[nx] == i) зелёная  else красная, penwidth=4
  Для prev то же самое в обратную - оранжевая или красная
 */
 
-tree_err_t node_dump_graph(const Node* n, int qur_num, FILE* out) {
+// ================================== дамп ячейки в dot ==================================
+tree_err_t node_dump_graph(const Node* n, int* qur_num, FILE* out) {
     if (n == NULL) return TREE_OK;
-    if (qur_num == 0)  // корень
+
+    if (*qur_num == 0)  // корень
     {
-        /*for (qur_num; qur_num < width; qur_num++) {
-            fprintf(out, "  cell%d [style=\"invis\"];\n", qur_num);
-        }  // невидимые узлы чтобы было место*/
         fprintf(out, "  cell%d [fillcolor=\"" GV_HDR_FILL "\", color=\"" GV_HDR_BORDER
                      "\","
-                     " label=\"ROOT\\n\\data: ",
-                qur_num);
-        fprintf(out, printf_types[n->type], n->key);
-        fprintf(out, "\\nkey: %d\"];\n",
-                n->key);
-        /*for (qur_num; qur_num < width * 2; qur_num++) {
-            fprintf(out, "  cell%d [style=\"invis\"];\n", qur_num);
-        }*/
-        // невидимые узлы чтобы было место
+                     " label=\"ROOT\\n\\key: %d",
+                *qur_num, n->key);
+        fprintf(out, "\\ndata: ");
+        fprintf(out, printf_types[n->type], n->data);
+
+    } else {
+        int is_free         = (n->type == NON_TYPE);
+        int number_of_child = (n->left == NULL && n->right == NULL) ? 0 : ((n->right != NULL && n->left != NULL) ? 2 : 1);
+        fprintf(out, "  cell%d [fillcolor=\"%s\", color=\"%s\"%s, label=\"key: %d[%d]\\n\\n",
+                *qur_num,
+                is_free ? GV_FREE_FILL : GV_USED_FILL,
+                is_free ? GV_FREE_BORDER : GV_USED_BORDER,
+                is_free ? ", style=\"rounded,filled,dashed\"" : "",
+                n->key, number_of_child);
+        fprintf(out, printf_types[n->type], n->data);
     }
 
-    int is_free         = (n->type == NON_TYPE);
-    int number_of_child = (n->left != NULL) ? ((n->right != NULL) ? 2 : 1) : 0;
+    if (n->head != NULL)
+        fprintf(out, "\\nhead: %d", n->head->key);
+    else
+        fprintf(out, "\\nhead: NO_HEAD");
 
-    fprintf(out, "  cell%d [fillcolor=\"%s\", color=\"%s\"%s, label=\"key: %d[%d]\\n\\n",
-            qur_num,
-            is_free ? GV_FREE_FILL : GV_USED_FILL,
-            is_free ? GV_FREE_BORDER : GV_USED_BORDER,
-            is_free ? ", style=\"rounded,filled,dashed\"" : "",
-            n->key, number_of_child);
-    fprintf(out, printf_types[n->type], n->data);
     if (n->left != NULL)
         fprintf(out, "\\nleft_child: %d", n->left->key);
     else
-        fprintf(out, "\\nleft_child: NO_LEFT_CHILD\"];\n");
+        fprintf(out, "\\nleft_child: NO_LEFT_CHILD");
+
     if (n->right != NULL)
-        fprintf(out, "\\nright_child: %d\"];\n", n->right->key);
+        fprintf(out, "\\nright_child: %d", n->right->key);
     else
-        fprintf(out, "\\nright_child: NO_RIGHT_CHILD\"];\n");
+        fprintf(out, "\\nright_child: NO_RIGHT_CHILD");
+    fprintf(out, "\"];\n");
+
+    (*qur_num)++;
+    node_dump_graph(n->left, qur_num, out);
+    for (int i = 0; i < 3; i++) {
+        fprintf(out, "  cell%d [style=\"invis\", width=1, fixedsize=true];\n", *qur_num);  // средний невидимка
+        (*qur_num)++;
+    }
+    node_dump_graph(n->right, qur_num, out);
+    return TREE_OK;
+}
+
+// ======================================= построение одной стрелки ===============================================
+static void gv_edge(FILE* o, const char* mode, int from, const char* fport, int to, const char* tport,
+                    const char* color, const char* attrs) {
+    if (attrs == NULL) {
+        fprintf(o, "  cell%d -> cell%d [color=\"%s\"];\n", from, to, color);
+        return;
+    }
+    const char* sep = attrs[0] ? ", " : "";
+    if (strcmp(mode, "ARCS") == 0)
+        fprintf(o, "  cell%d:%s -> cell%d:%s [color=\"%s\"%s%s];\n",
+                from, fport, to, tport, color, sep, attrs);
+    else {
+        fprintf(o, "  cell%d -> cell%d [color=\"%s\"%s%s];\n", from, to, color, sep, attrs);
+    }
+}
+
+// ======================================= построение всех стрелок для текущей ячейки ====================================
+tree_err_t arrow_dump_graph(const Node* n, int* qur_num, FILE* out) {
+    if (n == NULL) return TREE_OK;
+    int parent = (*qur_num)++;
+
+    if (n->left != NULL) {
+        int left_child = *qur_num;
+        arrow_dump_graph(n->left, qur_num, out);
+
+        if (n->left->type == NON_TYPE && n->left->head == n)  // не уверен есть ли тут какие то проблемные случаи
+            gv_edge(out, TREE_GV_MODE, parent, "w", left_child, "n", GV_FREE_CHAIN, "style=dashed, headclip=true");
+        else if (n->left->head == n)  // left стрелка обычная или красная при несоглассованности
+            gv_edge(out, TREE_GV_MODE, parent, "w", left_child, "n", GV_BOTH, "headclip=true");
+        else
+            gv_edge(out, TREE_GV_MODE, parent, "w", left_child, "n", GV_BAD, "penwidth=4, headclip=true");
+    }
+
+    for (int i = 0; i < 3; i++) {
+        int invis_child = (*qur_num)++;
+        gv_edge(out, TREE_GV_MODE, parent, "s", invis_child, "n", GV_FREE_CHAIN, "style=invis, weigh=10000, headclip=true");  // невидимый ребенок - его рисуем в любом случае
+    }
+
+    if (n->right != NULL) {
+        int right_child = *qur_num;
+        arrow_dump_graph(n->right, qur_num, out);
+
+        if (n->right->type == NON_TYPE && n->right->head == n)  // не уверен есть ли тут какие то проблемные случаи
+            gv_edge(out, TREE_GV_MODE, parent, "e", right_child, "n", GV_FREE_CHAIN, "style=dashed, headclip=true");
+        else if (n->right->head == n)  // right стрелка обычная или красная при несогласованности
+            gv_edge(out, TREE_GV_MODE, parent, "e", right_child, "n", GV_PREV ":" GV_PREV, "headclip=true");
+        else
+            gv_edge(out, TREE_GV_MODE, parent, "e", right_child, "n", GV_BAD, "penwidth=4, headclip=true");
+    }
+    return TREE_OK;
 }
 
 tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
     if (tree == NULL || base_name == NULL) return TREE_NULL_PTR;
 
     char dot[256], png[256];
+    snprintf(dot, sizeof(dot), "./dot_of_dumps/%s_ortho.dot", base_name);
+    snprintf(png, sizeof(png), "./png_dumps/%s_ortho.png", base_name);
     tree_err_t err;
 
     static int dump_id = 0;
@@ -309,49 +376,69 @@ tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
         return TREE_IO_ERROR;
     }
 
-    const char* mode_str = GV_MODE;
+    const char* mode_str = TREE_GV_MODE;
     fprintf(log_file, "  <div class=\"meta\"><strong>DUMP #%d</strong> | Mode: <span class=\"meta-func\">%s</span> | File: <span class=\"meta-file\">%s</span></div>\n",
             dump_id, mode_str, png);
     fprintf(log_file, "  <table class=\"stats-table\">\n");
-    fprintf(log_file,
-            "    <tr>"
-            "<td class=\"var-name\">Size:</td><td class=\"var-val\">%zu</td>"
-            "<td class=\"var-name\">Key of root:</td><td class=\"var-val\">%d</td>"
-            "<td class=\"var-name\">Data of root:</td><td class=\"var-val\">",
-            tree->size, tree->root->key);
-    fprintf(log_file, printf_types[tree->root->type], tree->root->data);
-    fprintf(log_file, "</td>");
-    fprintf(log_file,
-            "<td class=\"var-name\">Key of left child:</td><td class=\"var-val\">%d</td>"
-            "<td class=\"var-name\">Key of right child:</td><td class=\"var-val\">%d</td>"
-            "</tr>\n",
-            tree->root->left->key, tree->root->right->key);
+    if (tree->root != NULL) {
+        fprintf(log_file,
+                "    <tr>"
+                "<td class=\"var-name\">Size:</td><td class=\"var-val\">%zu</td>"
+                "<td class=\"var-name\">Key of root:</td><td class=\"var-val\">%d</td>"
+                "<td class=\"var-name\">Data of root:</td><td class=\"var-val\">",
+                tree->size, tree->root->key);
+        fprintf(log_file, printf_types[tree->root->type], tree->root->data);
+        fprintf(log_file, "</td>");
+        if (tree->root->left != NULL) {
+            fprintf(log_file,
+                    "<td class=\"var-name\">Key of left child:</td><td class=\"var-val\">%d</td>", tree->root->left->key);
+        }
+        if (tree->root->right != NULL) {
+            fprintf(log_file,
+                    "<td class=\"var-name\">Key of right child:</td><td class=\"var-val\">%d</td>", tree->root->right->key);
+        }
+    } else {
+        fprintf(log_file, "    <tr><td class=\"var-name\">Size:</td><td class=\"var-val\">0 (Empty tree)</td>\n");
+    }
+    fprintf(log_file, "</tr>\n");
     fprintf(log_file, "  </table>\n");
 
     // ============================ заголовок =========================
     fprintf(out, "digraph tree {\n");
-    const char* splines = (strcmp(TREE_GV_ORTHO, "ORTHO") == 0) ? "ortho" : "true";
-    double nodesep      = (strcmp(TREE_GV_ORTHO, "ORTHO") == 0) ? 2.0 : 1.6;
-    double ranksep      = (strcmp(TREE_GV_ORTHO, "ORTHO") == 0) ? 2.5 : 1.5;
+    const char* splines = (strcmp(TREE_GV_MODE, "ORTHO") == 0) ? "ortho" : "true";
+    double nodesep      = (strcmp(TREE_GV_MODE, "ORTHO") == 0) ? 2.0 : 1.6;
+    double ranksep      = (strcmp(TREE_GV_MODE, "ORTHO") == 0) ? 2.5 : 1.5;
     fprintf(out, "  graph [dpi=110, bgcolor=\"" GV_BG
                  "\", splines=%s, pad=0.5,"
                  " nodesep=%.1f, ranksep=%.1f];\n",
             splines, nodesep, ranksep);
     fprintf(out, "  node  [shape=rectangle, style=\"rounded,filled\", fontcolor=\"" GV_TEXT
                  "\","
-                 " fontsize=22, width=2.2, height=2.0, fixedsize=true, penwidth=3];\n");
+                 " fontsize=22, width=6.2, height=2.5, fixedsize=true, penwidth=3];\n");
     fprintf(out, "  edge  [penwidth=2, arrowsize=1.0];\n");
 
     //==================================================================================
 
     // ============================== ячейки ==========================
-    err = node_dump_graph(tree->root, 0, out);
+    int qur_num = 0;
+    err         = node_dump_graph(tree->root, &qur_num, out);
     ASSERT(err == TREE_OK);
 
-    snprintf(dot, sizeof(dot), "./dot_of_dumps/%s_ortho.dot", base_name);
-    snprintf(png, sizeof(png), "./png_dumps/%s_ortho.png", base_name);
+    // =========================== стрелки ============================
+    qur_num = 0;
+    err     = arrow_dump_graph(tree->root, &qur_num, out);
+    ASSERT(err == TREE_OK);
 
-    char cmd[512] = {0};
+    // =========== все ячейки строятся сверху вниз ================
+    fprintf(out, "  { rank=TB;");
+    for (size_t i = 0; i < tree->size; i++) fprintf(out, " cell%zu;", i);
+    fprintf(out, " }\n");
+
+    fprintf(out, "}\n");
+    fclose(out);
+
+    // ================================ запуск dot ===================================
+    char cmd[1024] = {0};
     snprintf(cmd, sizeof(cmd), "dot -Tpng \"%s\" -o \"%s\"", dot, png);
     if (system(cmd) != 0) {
         fprintf(log_file, "  <div style=\"color: #e06c75; font-weight: bold;\">[ERROR] Graphviz generation failed!</div>\n");
@@ -359,6 +446,15 @@ tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
         fclose(log_file);
         return TREE_CORRYPTED;
     }
+
+    fprintf(log_file, "  <div class=\"graph-container\">\n");
+    fprintf(log_file, "    <img src=\"%s\" alt=\"List State\">\n", png);
+    fprintf(log_file, "  </div>\n");
+    fprintf(log_file, "</div>\n");  // Закрываем dump-card
+
+    fclose(log_file);
+
+    return TREE_OK;
 }
 
 void tree_dump_hook(const char* name, void* ctx) {
@@ -476,7 +572,7 @@ int bfs(const Tree* t) {
     то есть есть queue мы запоминаем число детей root - 2 и достаем ровно столько и кладем детей и считаем сколько кладем
     далее снова снимаем ровно столько сколлько запомнили и кладем новые и это значение снова запоминаем
 */
-void log_init() {
+void tree_log_init() {
     FILE* log = fopen("log.html", "w");
     if (!log) return;
 
@@ -545,7 +641,7 @@ void log_init() {
             "        overflow-x: auto;\n"
             "    }\n"
             "    img {\n"
-            "        max-height: 600px;\n"
+            "        max-height: 1000px;\n"
             "        display: block;\n"
             "    }\n"
             "       /* темный скроллбар */\n"
