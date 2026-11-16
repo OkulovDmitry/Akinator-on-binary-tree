@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdnoreturn.h>
+#include <string.h>
 
 // сделать ассерт без падения
 
@@ -16,7 +17,7 @@
 // vfprintf(...)     - принимает список аргументов из ap, читает строку формата fmt и печатает все в stderr
 // fflush()          - принудительно выталкивает все, что мы только что написали в файл логов или на экран - чтобы при падении проги текст ошибки точно не потерялся
 
-typedef void (*AssertDumpFn)(FILE* out, void* ctx);
+typedef void (*AssertDumpFn)(const char* name, void* ctx);
 
 /* Что вызвать перед смертью, NULL чтобы снять хук */
 void assert_set_hook(AssertDumpFn fn, void* ctx);

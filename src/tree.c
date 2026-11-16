@@ -2,7 +2,7 @@
 
 #define GV_BG "#1B1F24"         // фон
 #define GV_TEXT "#E6EDF3"       // текст
-#define GV_USED_FILL "#2F5D8A"  // в data 
+#define GV_USED_FILL "#2F5D8A"  // в data
 #define GV_USED_BORDER "#6CA6E0"
 #define GV_FREE_FILL "#2B3036"  // свободная ячейка
 #define GV_FREE_BORDER "#6E7681"
@@ -12,10 +12,10 @@
 #define GV_PREV "#F0883E"        // prev
 #define GV_BOTH "#187a06"        // согласованная связь next + prev
 #define GV_FREE_CHAIN "#8B949E"  // цепочка свободных
-#define GV_FREE_PTR "#D29922"    // указатель free
+#define GV_FREE_PTR "#D2992.2"   // указатель free
 #define GV_BAD "#F85149"         // рассогласование
 
-const char* list_strerror(tree_err_t err) {
+const char* tree_strerror(tree_err_t err) {
     switch (err) {
         case TREE_OK:
             return "ok";
@@ -77,6 +77,14 @@ tree_err_t tree_insert(Tree* t, int key, node_type type, node_elem_t data) {
     if (!n) return TREE_NO_MEM;
 
     if (type >= NUMBER_OF_TYPES) return TREE_WRONG_TYPE;
+
+    if (type == STRING_TYPE && data.string_data == NULL) {
+        data.string_data = "POISON";
+    }  // защита от передачи NULL при string
+
+    if (type == NON_TYPE) {
+        data.string_data = "POISON";
+    }
 
     *n  = (Node){.key = key, .type = type, .data = data, .head = parent};
     *pp = n;
@@ -167,20 +175,123 @@ static void dump_node(FILE* o, const Node* n, size_t* budget) {
     dump_node(o, n->left, budget);
     fputc(' ', o);
     dump_node(o, n->right, budget);
-    fprintf(o, " %d)", n->key);
+    fprintf(o, " ");
+    fprintf(o, printf_types[n->type], n->key);
+    fprintf(o, ")");
 }
 
-void tree_dump(FILE* o, const Tree* t) {
-    ASSERT(o != NULL);
+void tree_dump(const char* name, const Tree* t) {
+    ASSERT(name != NULL);
     ASSERT(t != NULL);
+
+    FILE* o;
+    if (strcmp(name, "stderr") == 0) {
+        o = stderr;
+    } else if (strcmp(name, "stdout") == 0) {
+        o = stdout;
+    } else {
+        o = fopen(name, "a");
+        ASSERT(o != NULL);
+    }
 
     size_t budget = t->size;
     fprintf(o, "tree(size = %zu): ", t->size);
     dump_node(o, t->root, &budget);
     fputc('\n', o);
+
+    fclose(o);
 }
 
-tree_err_t list_dump_graph(const Tree* tree, const char* base_name) {
+/*
+Использованные элементы графвиза:
+========
+    fprintf(out, "digraph list {\n"); - заголовок графа
+digraph - значит граф ориентированный
+list - его имя
+========
+    graph [dpi=100, bgcolor="#2F353B", splines=ortho, nodesep=0.6, ranksep=1.2]; - настройка всего графа
+dpi - расширение картинки
+bgcolor - цвет фона
+splines=ortho - стрелки под прямым углом
+nodesep=0.6 - расстояние меж узлами в одном ряду
+ranksep - расстояние между рядами
+=======
+node  [shape=rectangle, style=\"rounded,filled\", fillcolor=\"#C5D0E6\","
+            " color=\"#C5D0E6\", fontsize=20, width=1.6, height=2.0, fixedsize=true, penwidth=3]; - настройки для всех узлов по умолчанию
+shape=rectangle - узел - прямоугольник со скругенными концами и заливкой
+fillcolor - цвет заливки
+color - цвет рамки
+fixedsize=true - размер строго width * height (в дюймах, текст не растягивается)
+penwidth - толщина рамки
+=======
+    edge  [penwidth=2, arrowsize=1.0]; - толщина стрелок и размер наконечника
+=======
+Переходим к ячейкам:
+    fprintf(out, "  cell0 [color=red, label=\"header\\n\\nhead: %d\\ntail: %d\\nfree: %d\"];\n",
+cell0 - объявление узла и его имя
+в [] атрибуты:
+color = red - перекрывает начальную рамку
+label - это тест внутри
+=======
+    fprintf(out, "  { rank=same;");
+    for (...) fprintf(out, " cell%d;", i);
+    fprintf(out, " }\n");
+rank=same заставляет Graphviz поставить перечисленные узлы на один горизонтальный уровень
+=======
+cell%d -> cell%d [style=invis, weight=100];
+невидимые стрелки 0->1->2->... с большим весом. В итоге графвиз мтремится сделать эти невидимые стрелки с большим 
+весом короткими и прямыми, поэтому ячейки выстраиваются не как добно графвизу, а слева направо в порядке индексов
+=======
+if (pv == -1) {... цепочка белых свободных ...}
+для свободной ячейки рисуется только белая стрелка next
+=======
+if (list->prev[nx] == i) зелёная  else красная, penwidth=4
+Это проверка согласованности в картинке - если next ячейки i указывает на nx то prev[nx] обязан быть i -
+ - если нет то стрелка красная и толстая
+ Для prev то же самое в обратную - оранжевая или красная
+*/
+
+tree_err_t node_dump_graph(const Node* n, int qur_num, FILE* out) {
+    if (n == NULL) return TREE_OK;
+    if (qur_num == 0)  // корень
+    {
+        /*for (qur_num; qur_num < width; qur_num++) {
+            fprintf(out, "  cell%d [style=\"invis\"];\n", qur_num);
+        }  // невидимые узлы чтобы было место*/
+        fprintf(out, "  cell%d [fillcolor=\"" GV_HDR_FILL "\", color=\"" GV_HDR_BORDER
+                     "\","
+                     " label=\"ROOT\\n\\data: ",
+                qur_num);
+        fprintf(out, printf_types[n->type], n->key);
+        fprintf(out, "\\nkey: %d\"];\n",
+                n->key);
+        /*for (qur_num; qur_num < width * 2; qur_num++) {
+            fprintf(out, "  cell%d [style=\"invis\"];\n", qur_num);
+        }*/
+        // невидимые узлы чтобы было место
+    }
+
+    int is_free         = (n->type == NON_TYPE);
+    int number_of_child = (n->left != NULL) ? ((n->right != NULL) ? 2 : 1) : 0;
+
+    fprintf(out, "  cell%d [fillcolor=\"%s\", color=\"%s\"%s, label=\"key: %d[%d]\\n\\n",
+            qur_num,
+            is_free ? GV_FREE_FILL : GV_USED_FILL,
+            is_free ? GV_FREE_BORDER : GV_USED_BORDER,
+            is_free ? ", style=\"rounded,filled,dashed\"" : "",
+            n->key, number_of_child);
+    fprintf(out, printf_types[n->type], n->data);
+    if (n->left != NULL)
+        fprintf(out, "\\nleft_child: %d", n->left->key);
+    else
+        fprintf(out, "\\nleft_child: NO_LEFT_CHILD\"];\n");
+    if (n->right != NULL)
+        fprintf(out, "\\nright_child: %d\"];\n", n->right->key);
+    else
+        fprintf(out, "\\nright_child: NO_RIGHT_CHILD\"];\n");
+}
+
+tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
     if (tree == NULL || base_name == NULL) return TREE_NULL_PTR;
 
     char dot[256], png[256];
@@ -204,20 +315,24 @@ tree_err_t list_dump_graph(const Tree* tree, const char* base_name) {
     fprintf(log_file, "  <table class=\"stats-table\">\n");
     fprintf(log_file,
             "    <tr>"
-            "<td class=\"var-name\">Size:</td><td class=\"var-val\">%d</td>"
+            "<td class=\"var-name\">Size:</td><td class=\"var-val\">%zu</td>"
             "<td class=\"var-name\">Key of root:</td><td class=\"var-val\">%d</td>"
-            "<td class=\"var-name\">Data of root:</td><td class=\"var-val\">%d</td>"
+            "<td class=\"var-name\">Data of root:</td><td class=\"var-val\">",
+            tree->size, tree->root->key);
+    fprintf(log_file, printf_types[tree->root->type], tree->root->data);
+    fprintf(log_file, "</td>");
+    fprintf(log_file,
             "<td class=\"var-name\">Key of left child:</td><td class=\"var-val\">%d</td>"
             "<td class=\"var-name\">Key of right child:</td><td class=\"var-val\">%d</td>"
             "</tr>\n",
-            tree->size, tree->root->key, tree->root->data, tree->root->left->key, tree->root->right->key);
+            tree->root->left->key, tree->root->right->key);
     fprintf(log_file, "  </table>\n");
 
     // ============================ заголовок =========================
-    fprintf(out, "digraph list {\n");
-    const char* splines = (GV_ORTHO == "ORTHO") ? "ortho" : "true";
-    double nodesep      = (GV_ORTHO == "ORTHO") ? 2.0 : 1.6;
-    double ranksep      = (GV_ORTHO == "ORTHO") ? 2.5 : 1.5;
+    fprintf(out, "digraph tree {\n");
+    const char* splines = (strcmp(TREE_GV_ORTHO, "ORTHO") == 0) ? "ortho" : "true";
+    double nodesep      = (strcmp(TREE_GV_ORTHO, "ORTHO") == 0) ? 2.0 : 1.6;
+    double ranksep      = (strcmp(TREE_GV_ORTHO, "ORTHO") == 0) ? 2.5 : 1.5;
     fprintf(out, "  graph [dpi=110, bgcolor=\"" GV_BG
                  "\", splines=%s, pad=0.5,"
                  " nodesep=%.1f, ranksep=%.1f];\n",
@@ -228,6 +343,10 @@ tree_err_t list_dump_graph(const Tree* tree, const char* base_name) {
     fprintf(out, "  edge  [penwidth=2, arrowsize=1.0];\n");
 
     //==================================================================================
+
+    // ============================== ячейки ==========================
+    err = node_dump_graph(tree->root, 0, out);
+    ASSERT(err == TREE_OK);
 
     snprintf(dot, sizeof(dot), "./dot_of_dumps/%s_ortho.dot", base_name);
     snprintf(png, sizeof(png), "./png_dumps/%s_ortho.png", base_name);
@@ -242,8 +361,8 @@ tree_err_t list_dump_graph(const Tree* tree, const char* base_name) {
     }
 }
 
-void tree_dump_hook(FILE* o, void* ctx) {
-    tree_dump(o, (const Tree*)ctx);
+void tree_dump_hook(const char* name, void* ctx) {
+    tree_dump_graph(name, (const Tree*)ctx);
 }
 
 tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, size_t limit) {
@@ -275,7 +394,9 @@ tree_err_t node_inorder(FILE* o, const Node* n) {
     ASSERT(n != NULL);
 
     if (n->left != NULL) node_inorder(o, n->left);
-    fprintf(o, "key: %d\ndata: " NODE_ELEM_FMT "\n\n", n->key, n->data);
+    fprintf(o, "key: %d\ndata: ", n->key);
+    fprintf(o, printf_types[n->type], n->data);
+    fprintf(o, "\n\n");
     if (n->right != NULL) node_inorder(o, n->right);
 
     return TREE_OK;
@@ -313,6 +434,48 @@ int tree_height(const Node* n) {
     return ((height_left > height_right) ? height_left : height_right) + 1;
 }
 
+int bfs(const Tree* t) {
+    int width = 1;
+    list_t queue;
+    list_err_t err = list_ctor(&queue, t->size);
+    ASSERT(err != LIST_OK);
+
+    err = list_elem_push(&queue, t->root, 1, NULL);
+    ASSERT(err != LIST_OK);
+    width          = 1;
+    int prev_width = 1;
+    int next_width = 0;
+
+    while (prev_width != 0) {
+        while (prev_width != 0) {
+            Node* p           = queue.data[0];
+            Node* left_child  = p->left;
+            Node* right_child = p->right;
+            if (left_child != NULL) {
+                list_elem_push(&queue, left_child, queue.prev[0], NULL);
+                next_width++;
+            }
+            if (right_child != NULL) {
+                list_elem_push(&queue, right_child, queue.prev[0], NULL);
+                next_width++;
+            }
+            list_elem_pop(&queue, 1);
+            prev_width--;
+        }
+        if (next_width > width) width = next_width;
+        prev_width = next_width;
+        next_width = 0;
+    }
+    return width;
+}
+
+/* был root он один мы его записали в список и обновили width
+    далее достаем root из очереди и пихаем туда ео детей и обновили width
+    далее достаем правого ребенка и записываем туда его детей, достаем 
+
+    то есть есть queue мы запоминаем число детей root - 2 и достаем ровно столько и кладем детей и считаем сколько кладем
+    далее снова снимаем ровно столько сколлько запомнили и кладем новые и это значение снова запоминаем
+*/
 void log_init() {
     FILE* log = fopen("log.html", "w");
     if (!log) return;

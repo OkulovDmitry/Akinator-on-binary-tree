@@ -5,22 +5,21 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "list.h"
 #include "my_assert.h"
 
 //typedef double node_elem_t;
 
 #define GV_MODE ("ORTHO")
 
-#define NODE_ELEM_FMT "%f"
-#define NODE_POISON ((node_elem_t)0xDEADBEEF)
-
 #define TREE_SEP "=========================================================================================================="
 
 #define TREE_DEBUG
 
-typedef enum { GV_ARCS,
-               GV_ORTHO } gv_mode_t;
+#define TREE_GV_ARCS "ARCS"
+#define TREE_GV_ORTHO "ORTHO"
 
 typedef enum {
     TREE_OK = 0,
@@ -42,14 +41,15 @@ typedef enum {
 } tree_err_t;
 
 typedef enum {
-    INT_TYPE        = 0,
-    DOUBLE_TYPE     = 1,
-    STRING_TYPE     = 2,
-    CHAR_TYPE       = 3,
-    NUMBER_OF_TYPES = 4,
+    NON_TYPE    = 0,
+    INT_TYPE    = 1,
+    DOUBLE_TYPE = 2,
+    STRING_TYPE = 3,
+    CHAR_TYPE   = 4,
+    NUMBER_OF_TYPES,
 } node_type;
 
-
+char* printf_types[NUMBER_OF_TYPES] = {"%s", "%d", "%lf", "%s", "%c"};
 
 typedef union {
     int int_data;
@@ -60,7 +60,7 @@ typedef union {
 
 typedef struct Node {
     int key;
-    node_type type;
+    int type;
     node_elem_t data;
     struct Node* left;
     struct Node* right;
@@ -85,9 +85,9 @@ tree_err_t tree_remove(Tree* t, int key);
 /* ---- отладка ----*/
 void log_init();
 
-void tree_dump_hook(FILE* o, void* ctx);
+void tree_dump_hook(const char* tree, void* ctx);
 
-void tree_dump(FILE* o, const Tree* t);
+void tree_dump(const char* name, const Tree* t);
 
 tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, size_t limit);
 tree_err_t tree_verify(const Tree* t);
@@ -98,5 +98,6 @@ tree_err_t tree_inorder(FILE* o, const Tree* t);  // вывод элементо
 Node* tree_min(Node* n);                          // поиск минимального узла (самый левый)
 Node* tree_max(Node* n);                          // поиск максималного узла (самый правый)
 int tree_height(const Node* n);                   // нахождение высоты дерева
+int bfs(const Tree* t);                           // нахождение ширины дерева - максимальное число узлов на одном уровне
 
 #endif

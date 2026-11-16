@@ -15,10 +15,14 @@ _Noreturn void assert_fail(const char* file, int line,
     if (in_fail) abort();
     in_fail = 1;
 
-    FILE* outs[3] = {stderr, fopen("errors.log", "a"), fopen("log.html", "a")};
+    char* outs[3] = {"stderr", "errors.log", "log.html"};
 
     for (int i = 0; i < 2; i++) {
-        FILE* o = outs[i];
+        FILE* o;
+        if (strcmp(outs[i], "stderr") == 0)
+            o = stderr;
+        else
+            o = fopen(outs[i], "a");
         if (!o) continue;
 
         fprintf(o, "\nASSERT FAILED: %s\n  at %s:%d in %s()\n",
@@ -34,38 +38,49 @@ _Noreturn void assert_fail(const char* file, int line,
         }
         if (g_hook) {
             fputs(" --------------------------------- dump ---------------------------------\n", o);
-            g_hook(o, g_ctx);
+            fclose(o);
+            g_hook(outs[i], g_ctx);
+            if (strcmp(outs[i], "stderr") == 0)
+                o = stderr;
+            else
+                o = fopen(outs[i], "a");
+            if (!o) continue;
             fputs(" ------------------------------- end dump -------------------------------\n", o);
         }
         fflush(o);
+        fclose(o);
     }
 
-    if (outs[2]) {
-        fprintf(outs[2], "<div class=\"error\"><b>ASSERT FAILED: %s</b><br>%s:%d: <code>",
+    FILE* o;
+    if (strcmp(outs[2], "stderr") == 0)
+        o = stderr;
+    else
+        o = fopen(outs[2], "a");
+
+    if (outs[2] != NULL) {
+        fprintf(o, "<div class=\"error\"><b>ASSERT FAILED: %s</b><br>%s:%d: <code>",
                 expr, file, line);
 
         // html_escape
         for (; *expr; expr++) {
             switch (*expr) {
                 case '&':
-                    fputs("&amp;", outs[2]);
+                    fputs("&amp;", o);
                     break;
                 case '<':
-                    fputs("&lt;", outs[2]);
+                    fputs("&lt;", o);
                     break;
                 case '>':
-                    fputs("&gt;", outs[2]);
+                    fputs("&gt;", o);
                     break;
                 default:
-                    fputc(*expr, outs[2]);
+                    fputc(*expr, o);
             }
         }
 
-        fprintf(outs[2], "</code></div>\n");
+        fprintf(o, "</code></div>\n");
+        fclose(o);
     }
-
-    if (outs[1]) fclose(outs[1]);
-    if (outs[2]) fclose(outs[2]);
 
     system("start chrome \"%CD%\\log.html\"");
 

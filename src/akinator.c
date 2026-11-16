@@ -6,7 +6,7 @@
 static void insert_ok(Tree* t, int key) {
     node_elem_t data;
     data.int_data = key * 10;
-    tree_err_t e = tree_insert(t, key, data);
+    tree_err_t e = tree_insert(t, key, INT_TYPE, data);
     VERIFY_MSG(e == TREE_OK, "insert %d failed, code=%d", key, e);
 }
 
@@ -15,7 +15,7 @@ static void remove_ok(Tree* t, int key) {
     VERIFY_MSG(e == TREE_OK, "remove %d failed, code=%d", key, e);
     VERIFY_MSG(tree_find(t, key) == NULL, "key %d still in tree", key);
     printf("removed %-3d -> ", key);
-    tree_dump(stdout, t);
+    tree_dump("stdout", t);
 }
 
 int main(void) {
@@ -37,7 +37,7 @@ int main(void) {
         insert_ok(&t, keys[i]);
 
     printf("after inserts: ");
-    tree_dump(stdout, &t);
+    tree_dump("stdout", &t);
 
     // ---- расскмоентить для проверки ассертов ----
     t.size = 7;
