@@ -6,14 +6,17 @@
 #define GV_USED_BORDER "#6CA6E0"
 #define GV_FREE_FILL "#2B3036"  // свободная ячейка
 #define GV_FREE_BORDER "#6E7681"
-#define GV_HDR_FILL "#5e4592"  // ячейка 0
+#define GV_HDR_FILL "#5e4592"  // корень
 #define GV_HDR_BORDER "#B392F0"
-#define GV_NEXT "#3FB950"        // next
-#define GV_PREV "#F0883E"        // prev
-#define GV_BOTH "#187a06"        // согласованная связь next + prev
-#define GV_FREE_CHAIN "#8B949E"  // цепочка свободных
-#define GV_FREE_PTR "#D2992.2"   // указатель free
+#define GV_LEFT "#F0883E"        // левый ребенок
+#define GV_RIGHT "#187a06"       // правый ребенок
+#define GV_FREE_CHAIN "#8B949E"  // non_type
+#define GV_FREE_PTR "#D29922"    // указатель  на non_type
 #define GV_BAD "#F85149"         // рассогласование
+
+#define MAX_NODE_LEN 500
+#define HEAD_KEY 100
+#define MAX_OF_NODES 1000
 
 const char* printf_types[NUMBER_OF_TYPES] = {"%s", "%d", "%lf", "%s", "%c"};
 
@@ -177,8 +180,9 @@ static void dump_node(FILE* o, const Node* n, size_t* budget) {
     dump_node(o, n->left, budget);
     fputc(' ', o);
     dump_node(o, n->right, budget);
-    fprintf(o, " ");
-    fprintf(o, printf_types[n->type], n->key);
+    fprintf(o, " \"");
+    fprintf(o, printf_types[n->type], n->data);
+    fprintf(o, "\"");
     fprintf(o, ")");
 }
 
@@ -201,7 +205,136 @@ void tree_dump(const char* name, const Tree* t) {
     dump_node(o, t->root, &budget);
     fputc('\n', o);
 
+    //fflush(o);
     fclose(o);
+}
+
+#define RETURN_IO_ERR() do { \
+    printf("TREE_IO_ERROR at %s:%d (c='%c' [%d], word='%s')\n", __FILE__, __LINE__, (c >= 32 ? c : '?'), c, word); \
+    return TREE_IO_ERROR; \
+} while(0)
+
+tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
+    int c = fgetc(in);
+
+    while (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+        c = fgetc(in);
+    }
+
+    while (c == ')') {
+        (*num_close)++;
+        c = fgetc(in);
+    }
+
+    while (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+        c = fgetc(in);
+    }
+
+    while (c == '(') {
+        c = fgetc(in);
+        (*num_open)++;
+    }
+
+    while (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+        c = fgetc(in);
+    }
+
+    int len = 0;
+    if (c == '"') {
+        while (c != '"' && c != EOF && len < MAX_NODE_LEN - 1) {
+            c           = fgetc(in);
+            word[len++] = c;
+            c           = fgetc(in);
+        }
+        if (c != '"') return TREE_IO_ERROR;
+        word[len] = '\0';
+    } else {
+        while (c != ' ' && c != ')' && c != '(' && c != '\n' && c != '\r' && c != EOF && len < MAX_NODE_LEN - 1) {
+            word[len++] = (char)c;
+            c           = fgetc(in);
+        }
+        word[len] = '\0';
+        if (strcmp("nil", word) != 0) return TREE_IO_ERROR;
+
+        if (c != EOF) ungetc(c, in);
+    }
+
+    return TREE_OK;
+}
+
+tree_err_t node_add_from_file(FILE* in, my_stack_t* nodes, int* num_open, int* num_close) {
+    char word[MAX_NODE_LEN];
+    tree_err_t err = node_take(in, word, num_open, num_close);
+    if (err != TREE_OK) return TREE_IO_ERROR;
+    if (!strcmp(word, "nil")) {
+        Node* nil_node             = malloc(sizeof(Node));
+        nil_node->left             = NULL;
+        nil_node->right            = NULL;
+        nil_node->head             = NULL;
+        nil_node->key              = 0;
+        nil_node->type             = STRING_TYPE;
+        nil_node->data.string_data = strdup(word);
+        stack_push(nodes, nil_node);
+        int c = fgetc(in);
+        if (c != ' ') return TREE_IO_ERROR;
+        return node_add_from_file(in, nodes, num_open, num_close);
+    } else {
+        Elem_t right_child;
+        Elem_t left_child;
+        stack_pop(nodes, &right_child);
+        stack_pop(nodes, &left_child);
+
+        Node* new_node             = malloc(sizeof(Node));
+        new_node->left             = left_child;
+        new_node->right            = right_child;
+        new_node->head             = NULL;
+        new_node->key              = 0;
+        new_node->type             = STRING_TYPE;
+        new_node->data.string_data = strdup(word);
+        right_child->head          = new_node;
+        left_child->head           = new_node;
+
+        stack_push(nodes, new_node);
+        int c = fgetc(in);
+        if (c != ')') return TREE_IO_ERROR;
+        (*num_close)++;
+
+        c = fgetc(in);
+        while (c == ')' || c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+            if (c == ')') (*num_close)++;
+            c = fgetc(in);
+        }
+
+        if (c == EOF) return TREE_OK;
+        ungetc(c, in);
+        return node_add_from_file(in, nodes, num_open, num_close);
+    }
+}
+
+tree_err_t read_rpn_tree(Tree* t, const char* name) {
+    ASSERT(name != NULL);
+    FILE* in = fopen(name, "r");
+    ASSERT(in != NULL);
+
+    int c = fgetc(in);
+    if (c != '(') return TREE_IO_ERROR;
+
+    int num_open  = 1;
+    int num_close = 0;
+
+    my_stack_t nodes;
+    err_t stack_err = stack_ctor(&nodes, MAX_NODE_LEN);
+    if (stack_err != STACK_OK) return TREE_IO_ERROR;
+
+    tree_err_t err = node_add_from_file(in, &nodes, &num_open, &num_close);
+    if (err != TREE_OK) return TREE_IO_ERROR;
+
+    stack_err = stack_pop(&nodes, &(t->root));
+    if (stack_err != STACK_OK) return TREE_IO_ERROR;
+
+    t->size = num_open;
+    fclose(in);
+    return TREE_OK;
 }
 
 /*
@@ -332,7 +465,7 @@ tree_err_t arrow_dump_graph(const Node* n, int* qur_num, FILE* out) {
         if (n->left->type == NON_TYPE && n->left->head == n)  // не уверен есть ли тут какие то проблемные случаи
             gv_edge(out, TREE_GV_MODE, parent, "w", left_child, "n", GV_FREE_CHAIN, "style=dashed, headclip=true");
         else if (n->left->head == n)  // left стрелка обычная или красная при несоглассованности
-            gv_edge(out, TREE_GV_MODE, parent, "w", left_child, "n", GV_BOTH, "headclip=true");
+            gv_edge(out, TREE_GV_MODE, parent, "w", left_child, "n", GV_LEFT, "headclip=true");
         else
             gv_edge(out, TREE_GV_MODE, parent, "w", left_child, "n", GV_BAD, "penwidth=4, headclip=true");
     }
@@ -349,7 +482,7 @@ tree_err_t arrow_dump_graph(const Node* n, int* qur_num, FILE* out) {
         if (n->right->type == NON_TYPE && n->right->head == n)  // не уверен есть ли тут какие то проблемные случаи
             gv_edge(out, TREE_GV_MODE, parent, "e", right_child, "n", GV_FREE_CHAIN, "style=dashed, headclip=true");
         else if (n->right->head == n)  // right стрелка обычная или красная при несогласованности
-            gv_edge(out, TREE_GV_MODE, parent, "e", right_child, "n", GV_PREV ":" GV_PREV, "headclip=true");
+            gv_edge(out, TREE_GV_MODE, parent, "e", right_child, "n", GV_RIGHT ":" GV_RIGHT, "headclip=true");
         else
             gv_edge(out, TREE_GV_MODE, parent, "e", right_child, "n", GV_BAD, "penwidth=4, headclip=true");
     }
@@ -458,7 +591,7 @@ tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
 }
 
 void tree_dump_hook(const char* name, void* ctx) {
-    tree_dump_graph(name, (const Tree*)ctx);
+    tree_dump(name, (const Tree*)ctx);
 }
 
 tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, size_t limit) {
@@ -671,22 +804,4 @@ void tree_log_init() {
             "</style>\n"
             "</head>\n<body>\n<h1>Tree Execution History</h1>\n");
     fclose(log);
-}
-
-static void html_escape(FILE* f, const char* s) {
-    for (; *s; s++) {
-        switch (*s) {
-            case '&':
-                fputs("&amp;", f);
-                break;
-            case '<':
-                fputs("&lt;", f);
-                break;
-            case '>':
-                fputs("&gt;", f);
-                break;
-            default:
-                fputc(*s, f);
-        }
-    }
 }

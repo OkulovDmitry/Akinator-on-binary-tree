@@ -38,17 +38,19 @@ _Noreturn void assert_fail(const char* file, int line,
         }
         if (g_hook) {
             fputs(" --------------------------------- dump ---------------------------------\n", o);
-            fclose(o);
+            if (strcmp(outs[i], "stderr") != 0) fclose(o);
             g_hook(outs[i], g_ctx);
             if (strcmp(outs[i], "stderr") == 0)
                 o = stderr;
             else
                 o = fopen(outs[i], "a");
+            fprintf(stderr, "I WAS HERE\n");
             if (!o) continue;
             fputs(" ------------------------------- end dump -------------------------------\n", o);
+            fflush(o);
         }
         fflush(o);
-        fclose(o);
+        if (strcmp(outs[i], "stderr") != 0) fclose(o);
     }
 
     FILE* o;

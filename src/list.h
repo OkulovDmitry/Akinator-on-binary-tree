@@ -5,7 +5,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-//#include "stack.h"
 
 struct Node;
 typedef struct Node* list_elem_t;

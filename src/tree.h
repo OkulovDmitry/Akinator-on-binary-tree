@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "list.h"
+#include "stack.h"
 #include "my_assert.h"
 
 //typedef double node_elem_t;
@@ -97,5 +98,7 @@ Node* tree_min(Node* n);                          // поиск минималь
 Node* tree_max(Node* n);                          // поиск максималного узла (самый правый)
 int tree_height(const Node* n);                   // нахождение высоты дерева
 int bfs(const Tree* t);                           // нахождение ширины дерева - максимальное число узлов на одном уровне
+
+tree_err_t read_rpn_tree(Tree* t, const char* name);
 
 #endif

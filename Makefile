@@ -4,6 +4,7 @@ OBJ_DIR = obj
 DOT_DIR = dot_of_dumps
 PNG_DIR = png_dumps
 BINPRO_DIR = bin_pograms
+TXT_DIR = txt_dumps
 
 CFLAGS := -Wall -Wextra -Wshadow -g -O2 -MMD -MP -I$(SRC_DIR)
 LDFLAGS = -O2
@@ -33,8 +34,8 @@ run: $(TARGET)
 	./$(TARGET)
 
 clean:
-	-rd /S /Q bin_programs obj dot_of_dumps png_dumps
-	-$(RM) .png .dot errors.log
-	mkdir bin_programs obj dot_of_dumps png_dumps
+	-rd /S /Q bin_programs obj dot_of_dumps png_dumps txt_dumps
+	-$(RM) errors.log log.html
+	mkdir bin_programs obj dot_of_dumps png_dumps txt_dumps
 
 .PHONY: all run clean
