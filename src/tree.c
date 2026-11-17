@@ -8,8 +8,8 @@
 #define GV_FREE_BORDER "#6E7681"
 #define GV_HDR_FILL "#5e4592"  // корень
 #define GV_HDR_BORDER "#B392F0"
-#define GV_LEFT "#F0883E"        // левый ребенок
-#define GV_RIGHT "#187a06"       // правый ребенок
+#define GV_RIGHT "#F0883E"       // правый ребенок
+#define GV_LEFT "#187a06"        // левый ребенок
 #define GV_FREE_CHAIN "#8B949E"  // non_type
 #define GV_FREE_PTR "#D29922"    // указатель  на non_type
 #define GV_BAD "#F85149"         // рассогласование
@@ -196,12 +196,12 @@ void tree_dump(const char* name, const Tree* t) {
     } else if (strcmp(name, "stdout") == 0) {
         o = stdout;
     } else {
-        o = fopen(name, "a");
+        o = fopen(name, "w");
         ASSERT(o != NULL);
     }
 
     size_t budget = t->size;
-    fprintf(o, "tree(size = %zu): ", t->size);
+    //fprintf(o, "tree(size = %zu): ", t->size);
     dump_node(o, t->root, &budget);
     fputc('\n', o);
 
@@ -215,7 +215,7 @@ void tree_dump(const char* name, const Tree* t) {
         return TREE_IO_ERROR;                           \
     } while (0)
 
-tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
+tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close, int* is_nil) {
     int c = fgetc(in);
 
     while (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
@@ -241,11 +241,12 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
     }
 
     int len = 0;
+    *is_nil = 0;
     if (c == '"') {
         c = fgetc(in);
         while (c != '"' && c != EOF && len < MAX_NODE_LEN - 1) {
             word[len++] = (char)c;
-            c = fgetc(in);
+            c           = fgetc(in);
         }
         if (c != '"') RETURN_IO_ERR();
         word[len] = '\0';
@@ -257,6 +258,8 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
         word[len] = '\0';
         if (strcmp("nil", word) != 0) RETURN_IO_ERR();
 
+        *is_nil = 1;
+
         if (c != EOF) ungetc(c, in);
     }
 
@@ -265,54 +268,47 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
 
 tree_err_t node_add_from_file(FILE* in, my_stack_t* nodes, int* num_open, int* num_close) {
     char word[MAX_NODE_LEN];
-    tree_err_t err = node_take(in, word, num_open, num_close);
+    int is_nil;
+    tree_err_t err = node_take(in, word, num_open, num_close, &is_nil);
     if (err != TREE_OK) return TREE_IO_ERROR;
-    if (!strcmp(word, "nil")) {
-        Node* nil_node             = malloc(sizeof(Node));
-        nil_node->left             = NULL;
-        nil_node->right            = NULL;
-        nil_node->head             = NULL;
-        nil_node->key              = 0;
-        nil_node->type             = STRING_TYPE;
-        nil_node->data.string_data = strdup(word);
-        stack_push(nodes, nil_node);
-        int c = fgetc(in);
-        if (c != ' ') RETURN_IO_ERR();
-        return node_add_from_file(in, nodes, num_open, num_close);
-    } else {
-        Elem_t right_child;
-        Elem_t left_child;
-        stack_pop(nodes, &right_child);
-        stack_pop(nodes, &left_child);
-
-        Node* new_node             = malloc(sizeof(Node));
-        new_node->left             = left_child;
-        new_node->right            = right_child;
-        new_node->head             = NULL;
-        new_node->key              = 0;
-        new_node->type             = STRING_TYPE;
-        new_node->data.string_data = strdup(word);
-        right_child->head          = new_node;
-        left_child->head           = new_node;
-
-        stack_push(nodes, new_node);
-        int c = fgetc(in);
-        if (c != ')') {
-            printf("Expected ')', got '%c' (ASCII %d) after word '%s'\n", c, c, word);
-            RETURN_IO_ERR();
-        }
-        (*num_close)++;
-
-        c = fgetc(in);
-        while (c == ')' || c == ' ' || c == '\n' || c == '\r' || c == '\t') {
-            if (c == ')') (*num_close)++;
-            c = fgetc(in);
-        }
-
-        if (c == EOF) return TREE_OK;
-        ungetc(c, in);
+    if (is_nil) {
+        if (stack_push(nodes, NULL) != STACK_OK) RETURN_IO_ERR();
         return node_add_from_file(in, nodes, num_open, num_close);
     }
+
+    Elem_t right_child;
+    Elem_t left_child;
+    if (stack_pop(nodes, &right_child) != STACK_OK) RETURN_IO_ERR();
+    if (stack_pop(nodes, &left_child) != STACK_OK) RETURN_IO_ERR();
+
+    Node* new_node = malloc(sizeof(Node));
+    if (!new_node) return TREE_NO_MEM;
+    new_node->left             = left_child;
+    new_node->right            = right_child;
+    new_node->head             = NULL;
+    new_node->key              = 0;
+    new_node->type             = STRING_TYPE;
+    new_node->data.string_data = strdup(word);
+    if (right_child) right_child->head = new_node;
+    if (left_child) left_child->head = new_node;
+
+    stack_push(nodes, new_node);
+    int c = fgetc(in);
+    if (c != ')') {
+        printf("Expected ')', got '%c' (ASCII %d) after word '%s'\n", c, c, word);
+        RETURN_IO_ERR();
+    }
+    (*num_close)++;
+
+    c = fgetc(in);
+    while (c == ')' || c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+        if (c == ')') (*num_close)++;
+        c = fgetc(in);
+    }
+
+    if (c == EOF) return TREE_OK;
+    ungetc(c, in);
+    return node_add_from_file(in, nodes, num_open, num_close);
 }
 
 tree_err_t read_rpn_tree(Tree* t, const char* name) {
@@ -338,6 +334,10 @@ tree_err_t read_rpn_tree(Tree* t, const char* name) {
 
     t->size = num_open;
     fclose(in);
+
+    tree_renumber(t);
+    if (tree_verify(t) != TREE_OK) RETURN_IO_ERR();
+
     return TREE_OK;
 }
 
@@ -595,7 +595,7 @@ tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
 }
 
 void tree_dump_hook(const char* name, void* ctx) {
-    tree_dump(name, (const Tree*)ctx);
+    tree_dump_graph(name, (const Tree*)ctx);
 }
 
 tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, size_t limit) {
@@ -671,9 +671,9 @@ int bfs(const Tree* t) {
     int width = 1;
     list_t queue;
     list_err_t err = list_ctor(&queue, t->size);
-    ASSERT(err != LIST_OK);
+    ASSERT(err == LIST_OK);
 
-    err = list_elem_push(&queue, t->root, 1, NULL);
+    err = list_elem_push(&queue, t->root, queue.prev[0], NULL);
     ASSERT(err != LIST_OK);
     width          = 1;
     int prev_width = 1;
@@ -681,7 +681,8 @@ int bfs(const Tree* t) {
 
     while (prev_width != 0) {
         while (prev_width != 0) {
-            Node* p           = queue.data[0];
+            size_t front      = queue.next[0];
+            Node* p           = queue.data[front];
             Node* left_child  = p->left;
             Node* right_child = p->right;
             if (left_child != NULL) {
@@ -692,7 +693,7 @@ int bfs(const Tree* t) {
                 list_elem_push(&queue, right_child, queue.prev[0], NULL);
                 next_width++;
             }
-            list_elem_pop(&queue, 1);
+            list_elem_pop(&queue, front);
             prev_width--;
         }
         if (next_width > width) width = next_width;
@@ -808,4 +809,17 @@ void tree_log_init() {
             "</style>\n"
             "</head>\n<body>\n<h1>Tree Execution History</h1>\n");
     fclose(log);
+}
+
+static void renumber_node(Node* n, int* counter) {
+    if (!n) return;
+    renumber_node(n->left, counter);
+    n->key = (*counter)++;
+    renumber_node(n->right, counter);
+}
+
+void tree_renumber(Tree* t) {
+    ASSERT(t != NULL);
+    int counter = 0;
+    renumber_node(t->root, &counter);
 }

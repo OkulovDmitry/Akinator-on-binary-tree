@@ -92,6 +92,7 @@ tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, siz
 tree_err_t tree_verify(const Tree* t);
 
 // ---- Дополнительные функции ----
+void tree_renumber(Tree* t);
 tree_err_t node_inorder(FILE* o, const Node* n);
 tree_err_t tree_inorder(FILE* o, const Tree* t);  // вывод элементов дерева по возрастанию key
 Node* tree_min(Node* n);                          // поиск минимального узла (самый левый)
