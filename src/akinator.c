@@ -93,7 +93,7 @@ int main(void) {
     }
 
     printf("%d\n", first_read.root->key);
-    tree_dump_graph("txt_dumps/dump2.txt", &first_read);
+    tree_dump_graph("dump2.txt", &first_read);
 
     tree_destroy(&t);
     tree_destroy(&first_read);

@@ -209,10 +209,11 @@ void tree_dump(const char* name, const Tree* t) {
     fclose(o);
 }
 
-#define RETURN_IO_ERR() do { \
-    printf("TREE_IO_ERROR at %s:%d (c='%c' [%d], word='%s')\n", __FILE__, __LINE__, (c >= 32 ? c : '?'), c, word); \
-    return TREE_IO_ERROR; \
-} while(0)
+#define RETURN_IO_ERR()                                 \
+    do {                                                \
+        printf("TREE_IO_ERROR at line %d\n", __LINE__); \
+        return TREE_IO_ERROR;                           \
+    } while (0)
 
 tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
     int c = fgetc(in);
@@ -241,12 +242,12 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
 
     int len = 0;
     if (c == '"') {
+        c = fgetc(in);
         while (c != '"' && c != EOF && len < MAX_NODE_LEN - 1) {
-            c           = fgetc(in);
-            word[len++] = c;
-            c           = fgetc(in);
+            word[len++] = (char)c;
+            c = fgetc(in);
         }
-        if (c != '"') return TREE_IO_ERROR;
+        if (c != '"') RETURN_IO_ERR();
         word[len] = '\0';
     } else {
         while (c != ' ' && c != ')' && c != '(' && c != '\n' && c != '\r' && c != EOF && len < MAX_NODE_LEN - 1) {
@@ -254,7 +255,7 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close) {
             c           = fgetc(in);
         }
         word[len] = '\0';
-        if (strcmp("nil", word) != 0) return TREE_IO_ERROR;
+        if (strcmp("nil", word) != 0) RETURN_IO_ERR();
 
         if (c != EOF) ungetc(c, in);
     }
@@ -276,7 +277,7 @@ tree_err_t node_add_from_file(FILE* in, my_stack_t* nodes, int* num_open, int* n
         nil_node->data.string_data = strdup(word);
         stack_push(nodes, nil_node);
         int c = fgetc(in);
-        if (c != ' ') return TREE_IO_ERROR;
+        if (c != ' ') RETURN_IO_ERR();
         return node_add_from_file(in, nodes, num_open, num_close);
     } else {
         Elem_t right_child;
@@ -296,7 +297,10 @@ tree_err_t node_add_from_file(FILE* in, my_stack_t* nodes, int* num_open, int* n
 
         stack_push(nodes, new_node);
         int c = fgetc(in);
-        if (c != ')') return TREE_IO_ERROR;
+        if (c != ')') {
+            printf("Expected ')', got '%c' (ASCII %d) after word '%s'\n", c, c, word);
+            RETURN_IO_ERR();
+        }
         (*num_close)++;
 
         c = fgetc(in);
@@ -317,20 +321,20 @@ tree_err_t read_rpn_tree(Tree* t, const char* name) {
     ASSERT(in != NULL);
 
     int c = fgetc(in);
-    if (c != '(') return TREE_IO_ERROR;
+    if (c != '(') RETURN_IO_ERR();
 
     int num_open  = 1;
     int num_close = 0;
 
     my_stack_t nodes;
     err_t stack_err = stack_ctor(&nodes, MAX_NODE_LEN);
-    if (stack_err != STACK_OK) return TREE_IO_ERROR;
+    if (stack_err != STACK_OK) RETURN_IO_ERR();
 
     tree_err_t err = node_add_from_file(in, &nodes, &num_open, &num_close);
-    if (err != TREE_OK) return TREE_IO_ERROR;
+    if (err != TREE_OK) RETURN_IO_ERR();
 
     stack_err = stack_pop(&nodes, &(t->root));
-    if (stack_err != STACK_OK) return TREE_IO_ERROR;
+    if (stack_err != STACK_OK) RETURN_IO_ERR();
 
     t->size = num_open;
     fclose(in);
