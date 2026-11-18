@@ -3,6 +3,21 @@
 static AssertDumpFn g_hook;
 static void* g_ctx;
 
+static int in_fail; /* защита от рекурсии */
+static const char* g_file;
+static int g_line;
+static const char* g_func;
+static const char* g_expr;
+
+int assert_get_place(const char** file, int* line, const char** func, const char** expr) {
+    if (!in_fail) return 0;
+    *file = g_file;
+    *line = g_line;
+    *func = g_func;
+    *expr = g_expr;
+    return 1;
+}
+
 void assert_set_hook(AssertDumpFn fn, void* ctx) {
     g_hook = fn;
     g_ctx  = ctx;
@@ -11,9 +26,12 @@ void assert_set_hook(AssertDumpFn fn, void* ctx) {
 _Noreturn void assert_fail(const char* file, int line,
                            const char* func, const char* expr,
                            const char* fmt, ...) {
-    static int in_fail; /* защита от рекурсии */
     if (in_fail) abort();
     in_fail = 1;
+    g_file  = file;
+    g_line  = line;
+    g_func  = func;
+    g_expr  = expr;
 
     char* outs[3] = {"stderr", "errors.log", "log.html"};
 

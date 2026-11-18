@@ -1,0 +1,4 @@
+7 # number of sucess
+0 # number of bronze
+0 # number of silver
+0 # number of gold

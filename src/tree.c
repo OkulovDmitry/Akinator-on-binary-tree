@@ -25,42 +25,81 @@ const char* tree_strerror(tree_err_t err) {
         case TREE_OK:
             return "ok";
         case TREE_NULL_PTR:
-            return "null pointer";
+            return "null tree pointer\n";
         case TREE_NO_MEM:
-            return "out_of_memory (nodes)";
+            return "out_of_memory (nodes)\n";
         case TREE_DUPLICATE:
-            return "duplicate of key in tree";
+            return "duplicate of key in tree\n";
         case TREE_WRONG_SIZE:
-            return "tree have wrong size";
+            return "tree have wrong size\n";
         case TREE_WRONG_HEAD:
-            return "root have a parent";
+            return "root have a parent\n";
         case NODE_LEFT_BROKEN:
-            return "parent of left child is not this node";
+            return "parent of left child is not this node\n";
         case NODE_RIGHT_BROKEN:
-            return "parent of right child is not this node";
+            return "parent of right child is not this node\n";
+        case NODE_NULL_PTR:
+            return "null node pointer\n";
+        case TREE_NOT_FOUND:
+            return "tree not found\n";
+        case TREE_IO_ERROR:
+            return "file processing failed\n";
+        case TREE_WRONG_KEY:
+            return "key is too big or small for his subtree\n";
+        case TREE_DOT_CANT_OPEN:
+            return "error running dot from the command line\n";
+        case TREE_CORRYPTED:
+            return "tree is not valid\n";
+        case TREE_WRONG_NODE_TYPE:
+            return "wrong type of data in node\n";
+        case NULL_PTR:
+            return "null pointer in function\n";
+        case DOUBLE_QUOTE_MISSING:
+            return "a double quote is missing in the file\n";
+        case NILL_MISSING:
+            return "expected nil, but got another word\n";
+        case ERROR_STACK_PUSH_IN_RPN:
+            return "error in stack_push in rpn\n";
+        case ERROR_RIGHT_CHILD_IN_RPN_NOT_FOUND:
+            return "expected a right child on the stack while inserting a new node into the tree, but none was found";
+        case ERROR_LEFT_CHILD_IN_RPN_NOT_FOUND:
+            return "expected a left child on the stack while inserting a new node into the tree, but none was found";
         default:
-            return "unknown error";
+            return "unknown error\n";
     }
 }
 
 /* ---- Инициализация дерева ---- */
-void tree_init(Tree* t) {
-    ASSERT(t != NULL);
+void tree_init(Tree* t TREE_PLACE_IN) {
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
+
     t->root = NULL;
     t->size = 0;
-    ASSERT(tree_verify(t) == TREE_OK);
+
+#ifdef TREE_DEBUG
+    t->name     = name;
+    t->function = function;
+    t->file     = file;
+    t->line     = line;
+#endif
+
+    tree_err_t err = tree_verify(t);
+    ASSERT_MSG(err == TREE_OK, tree_strerror(err));
 }
 
+/* ---- Разрушение узла ---- */
 static void destroy_node(Node* n) {
     if (!n) return;
     destroy_node(n->left);
     destroy_node(n->right);
+    if (n->type == STRING_TYPE) free(n->data.string_data);
     free(n);
 }
 
 /* ---- Освобождает все узлы - обход снизу вверх ---- */
 void tree_destroy(Tree* t) {
-    ASSERT(t != NULL);
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
+
     destroy_node(t->root);
     t->root = NULL;
     t->size = 0;
@@ -68,12 +107,14 @@ void tree_destroy(Tree* t) {
 
 /* ---- Вставка узла ---- */
 tree_err_t tree_insert(Tree* t, int key, node_type type, node_elem_t data) {
-    ASSERT(t != NULL);
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
+
+    if (type >= NUMBER_OF_TYPES) return TREE_WRONG_NODE_TYPE;
 
     Node* parent = NULL;
-    Node** pp    = &t->root; /* указатель на место куда писать */
+    Node** pp    = &t->root;
     while (*pp) {
-        parent = *pp; /* запоминание последнего пройденного*/
+        parent = *pp;
         if (key == parent->key) return TREE_DUPLICATE;
         pp = (key < parent->key) ? &parent->left : &parent->right;
     }
@@ -81,14 +122,16 @@ tree_err_t tree_insert(Tree* t, int key, node_type type, node_elem_t data) {
     Node* n = malloc(sizeof(*n));
     if (!n) return TREE_NO_MEM;
 
-    if (type >= NUMBER_OF_TYPES) return TREE_WRONG_TYPE;
-
-    if (type == STRING_TYPE && data.string_data == NULL) {
-        data.string_data = "POISON";
-    }  // защита от передачи NULL при string
+    if (type == STRING_TYPE) {
+        data.string_data = strdup(data.string_data ? data.string_data : "POISON");
+        if (!data.string_data) {
+            free(n);
+            return TREE_NO_MEM;
+        }
+    }
 
     if (type == NON_TYPE) {
-        data.string_data = "POISON";
+        data.string_data = NULL;
     }
 
     *n  = (Node){.key = key, .type = type, .data = data, .head = parent};
@@ -101,7 +144,8 @@ tree_err_t tree_insert(Tree* t, int key, node_type type, node_elem_t data) {
 
 /* ---- Поиск узла ---- */
 Node* tree_find(const Tree* t, int key) {
-    ASSERT(t != NULL);
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
+
     Node* cur = t->root;
     while (cur && key != cur->key) {
         cur = (key < cur->key) ? cur->left : cur->right;
@@ -123,8 +167,8 @@ static void transplant(Tree* t, Node* u, Node* v) {
 
 /* ---- Удаление узла ---- */
 tree_err_t tree_remove_node(Tree* t, Node* n) {
-    ASSERT(t != NULL);
-    ASSERT(n != NULL);
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
+    ASSERT_MSG(n != NULL, tree_strerror(NODE_NULL_PTR));
     if (!n->left)
         transplant(t, n, n->right); /* нет детей или только правый */
     else if (!n->right)
@@ -148,6 +192,7 @@ tree_err_t tree_remove_node(Tree* t, Node* n) {
    Ну и теперь можно независимо от случая ставить s на место n.
    */
 
+    if (n->type == STRING_TYPE) free(n->data.string_data);
     free(n);
     t->size--;
     ASSERT_DUMP(tree_verify(t) == TREE_OK, tree_dump_hook, t);
@@ -156,12 +201,32 @@ tree_err_t tree_remove_node(Tree* t, Node* n) {
 
 /* Поиск узла по key и его удаление */
 tree_err_t tree_remove(Tree* t, int key) {
-    ASSERT(t != NULL);
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
 
     Node* n = tree_find(t, key);
     if (!n) return TREE_NOT_FOUND;
 
     return tree_remove_node(t, n);
+}
+
+static void print_data(FILE* o, const Node* n) {
+    switch (n->type) {
+        case INT_TYPE:
+            fprintf(o, "%d", n->data.int_data);
+            break;
+        case DOUBLE_TYPE:
+            fprintf(o, "%lf", n->data.double_data);
+            break;
+        case STRING_TYPE:
+            fprintf(o, "%s", n->data.string_data ? n->data.string_data : "(null)");
+            break;
+        case CHAR_TYPE:
+            fprintf(o, "%c", n->data.char_data);
+            break;
+        default:
+            fprintf(o, "POISON");
+            break;
+    }
 }
 
 static void dump_node(FILE* o, const Node* n, size_t* budget) {
@@ -181,14 +246,14 @@ static void dump_node(FILE* o, const Node* n, size_t* budget) {
     fputc(' ', o);
     dump_node(o, n->right, budget);
     fprintf(o, " \"");
-    fprintf(o, printf_types[n->type], n->data);
+    print_data(o, n);
     fprintf(o, "\"");
     fprintf(o, ")");
 }
 
 void tree_dump(const char* name, const Tree* t) {
-    ASSERT(name != NULL);
-    ASSERT(t != NULL);
+    ASSERT_MSG(name != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
 
     FILE* o;
     if (strcmp(name, "stderr") == 0) {
@@ -197,7 +262,7 @@ void tree_dump(const char* name, const Tree* t) {
         o = stdout;
     } else {
         o = fopen(name, "w");
-        ASSERT(o != NULL);
+        ASSERT_MSG(o != NULL, tree_strerror(NULL_PTR));
     }
 
     size_t budget = t->size;
@@ -205,17 +270,16 @@ void tree_dump(const char* name, const Tree* t) {
     dump_node(o, t->root, &budget);
     fputc('\n', o);
 
-    //fflush(o);
-    fclose(o);
+    if (o != stderr && o != stdout) fclose(o);
 }
 
-#define RETURN_IO_ERR()                                 \
-    do {                                                \
-        printf("TREE_IO_ERROR at line %d\n", __LINE__); \
-        return TREE_IO_ERROR;                           \
-    } while (0)
-
 tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close, int* is_nil) {
+    ASSERT_MSG(in != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(word != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(num_open != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(num_close != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(is_nil != NULL, tree_strerror(NULL_PTR));
+
     int c = fgetc(in);
 
     while (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
@@ -248,7 +312,7 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close, int* i
             word[len++] = (char)c;
             c           = fgetc(in);
         }
-        if (c != '"') RETURN_IO_ERR();
+        if (c != '"') return DOUBLE_QUOTE_MISSING;
         word[len] = '\0';
     } else {
         while (c != ' ' && c != ')' && c != '(' && c != '\n' && c != '\r' && c != EOF && len < MAX_NODE_LEN - 1) {
@@ -256,7 +320,7 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close, int* i
             c           = fgetc(in);
         }
         word[len] = '\0';
-        if (strcmp("nil", word) != 0) RETURN_IO_ERR();
+        if (strcmp("nil", word) != 0) return NILL_MISSING;
 
         *is_nil = 1;
 
@@ -267,19 +331,24 @@ tree_err_t node_take(FILE* in, char* word, int* num_open, int* num_close, int* i
 }
 
 tree_err_t node_add_from_file(FILE* in, my_stack_t* nodes, int* num_open, int* num_close) {
+    ASSERT_MSG(in != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(nodes != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(num_open != NULL, tree_strerror(NULL_PTR));
+    ASSERT_MSG(num_close != NULL, tree_strerror(NULL_PTR));
+
     char word[MAX_NODE_LEN];
     int is_nil;
     tree_err_t err = node_take(in, word, num_open, num_close, &is_nil);
     if (err != TREE_OK) return TREE_IO_ERROR;
     if (is_nil) {
-        if (stack_push(nodes, NULL) != STACK_OK) RETURN_IO_ERR();
+        if (stack_push(nodes, NULL) != STACK_OK) return ERROR_STACK_PUSH_IN_RPN;
         return node_add_from_file(in, nodes, num_open, num_close);
     }
 
     Elem_t right_child;
     Elem_t left_child;
-    if (stack_pop(nodes, &right_child) != STACK_OK) RETURN_IO_ERR();
-    if (stack_pop(nodes, &left_child) != STACK_OK) RETURN_IO_ERR();
+    if (stack_pop(nodes, &right_child) != STACK_OK) return ERROR_RIGHT_CHILD_IN_RPN_NOT_FOUND;
+    if (stack_pop(nodes, &left_child) != STACK_OK) return ERROR_LEFT_CHILD_IN_RPN_NOT_FOUND;
 
     Node* new_node = malloc(sizeof(Node));
     if (!new_node) return TREE_NO_MEM;
@@ -296,7 +365,7 @@ tree_err_t node_add_from_file(FILE* in, my_stack_t* nodes, int* num_open, int* n
     int c = fgetc(in);
     if (c != ')') {
         printf("Expected ')', got '%c' (ASCII %d) after word '%s'\n", c, c, word);
-        RETURN_IO_ERR();
+        return TREE_CORRYPTED;
     }
     (*num_close)++;
 
@@ -317,26 +386,30 @@ tree_err_t read_rpn_tree(Tree* t, const char* name) {
     ASSERT(in != NULL);
 
     int c = fgetc(in);
-    if (c != '(') RETURN_IO_ERR();
+    if (c != '(') {
+        printf("Expected '(', got '%c' (ASCII %d) in begin of file %s'\n", c, c, name);
+        return TREE_CORRYPTED;
+    }
 
     int num_open  = 1;
     int num_close = 0;
 
     my_stack_t nodes;
     err_t stack_err = stack_ctor(&nodes, MAX_NODE_LEN);
-    if (stack_err != STACK_OK) RETURN_IO_ERR();
+    if (stack_err != STACK_OK) return TREE_CORRYPTED;
 
     tree_err_t err = node_add_from_file(in, &nodes, &num_open, &num_close);
-    if (err != TREE_OK) RETURN_IO_ERR();
+    if (err != TREE_OK) return err;
 
     stack_err = stack_pop(&nodes, &(t->root));
-    if (stack_err != STACK_OK) RETURN_IO_ERR();
+    if (stack_err != STACK_OK) return TREE_CORRYPTED;
 
     t->size = num_open;
     fclose(in);
 
     tree_renumber(t);
-    if (tree_verify(t) != TREE_OK) RETURN_IO_ERR();
+    tree_err_t verify_err = tree_verify(t);
+    ASSERT_MSG(verify_err == TREE_OK, strerror(verify_err));
 
     return TREE_OK;
 }
@@ -393,6 +466,7 @@ if (list->prev[nx] == i) зелёная  else красная, penwidth=4
 // ================================== дамп ячейки в dot ==================================
 tree_err_t node_dump_graph(const Node* n, int* qur_num, FILE* out) {
     if (n == NULL) return TREE_OK;
+    if (*qur_num > 4 * MAX_OF_NODES) return TREE_CORRYPTED;
 
     if (*qur_num == 0)  // корень
     {
@@ -401,7 +475,7 @@ tree_err_t node_dump_graph(const Node* n, int* qur_num, FILE* out) {
                      " label=\"ROOT\\n\\key: %d",
                 *qur_num, n->key);
         fprintf(out, "\\ndata: ");
-        fprintf(out, printf_types[n->type], n->data);
+        print_data(out, n);
 
     } else {
         int is_free         = (n->type == NON_TYPE);
@@ -412,7 +486,7 @@ tree_err_t node_dump_graph(const Node* n, int* qur_num, FILE* out) {
                 is_free ? GV_FREE_BORDER : GV_USED_BORDER,
                 is_free ? ", style=\"rounded,filled,dashed\"" : "",
                 n->key, number_of_child);
-        fprintf(out, printf_types[n->type], n->data);
+        print_data(out, n);
     }
 
     if (n->head != NULL)
@@ -460,6 +534,7 @@ static void gv_edge(FILE* o, const char* mode, int from, const char* fport, int 
 // ======================================= построение всех стрелок для текущей ячейки ====================================
 tree_err_t arrow_dump_graph(const Node* n, int* qur_num, FILE* out) {
     if (n == NULL) return TREE_OK;
+    if (*qur_num > 4 * MAX_OF_NODES) return TREE_CORRYPTED;
     int parent = (*qur_num)++;
 
     if (n->left != NULL) {
@@ -493,7 +568,26 @@ tree_err_t arrow_dump_graph(const Node* n, int* qur_num, FILE* out) {
     return TREE_OK;
 }
 
-tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
+static void html_escape(FILE* o, const char* s) {
+    for (; *s; s++) {
+        switch (*s) {
+            case '&':
+                fputs("&amp;", o);
+                break;
+            case '<':
+                fputs("&lt;", o);
+                break;
+            case '>':
+                fputs("&gt;", o);
+                break;
+            default:
+                fputc(*s, o);
+        }
+    }
+}
+
+tree_err_t tree_dump_graph_at(const char* base_name, const Tree* tree,
+                              const char* call_file, int call_line, const char* call_func) {
     if (tree == NULL || base_name == NULL) return TREE_NULL_PTR;
 
     char dot[256], png[256];
@@ -514,6 +608,32 @@ tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
     }
 
     const char* mode_str = TREE_GV_MODE;
+    fprintf(log_file, "<div class=\"dump-card\">\n");
+    fprintf(log_file,
+            "  <div class=\"meta\">Dump called from <span class=\"meta-func\">%s()</span> "
+            "at <span class=\"meta-file\">%s:%d</span></div>\n",
+            call_func, call_file, call_line);
+#ifdef TREE_DEBUG
+    fprintf(log_file,
+            "  <div class=\"meta\">Tree <span class=\"meta-func\">%s</span> created in "
+            "<span class=\"meta-func\">%s()</span> at <span class=\"meta-file\">%s:%d</span></div>\n",
+            tree->name ? tree->name : "?",
+            tree->function ? tree->function : "?",
+            tree->file ? tree->file : "?",
+            tree->line);
+#endif  // печать места создания дерева
+
+    const char* fail_file;
+    const char* fail_func;
+    const char* fail_expr;
+    int fail_line;
+    if (assert_get_place(&fail_file, &fail_line, &fail_func, &fail_expr)) {
+        fprintf(log_file, "  <div class=\"error\"><b>ASSERT FAILED</b> at %s:%d in %s()<br>condition: <code>",
+                fail_file, fail_line, fail_func);
+        html_escape(log_file, fail_expr);
+        fprintf(log_file, "</code></div>\n");
+    }  // печать места падения
+
     fprintf(log_file, "  <div class=\"meta\"><strong>DUMP #%d</strong> | Mode: <span class=\"meta-func\">%s</span> | File: <span class=\"meta-file\">%s</span></div>\n",
             dump_id, mode_str, png);
     fprintf(log_file, "  <table class=\"stats-table\">\n");
@@ -524,7 +644,7 @@ tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
                 "<td class=\"var-name\">Key of root:</td><td class=\"var-val\">%d</td>"
                 "<td class=\"var-name\">Data of root:</td><td class=\"var-val\">",
                 tree->size, tree->root->key);
-        fprintf(log_file, printf_types[tree->root->type], tree->root->data);
+        print_data(log_file, tree->root);
         fprintf(log_file, "</td>");
         if (tree->root->left != NULL) {
             fprintf(log_file,
@@ -581,7 +701,7 @@ tree_err_t tree_dump_graph(const char* base_name, const Tree* tree) {
         fprintf(log_file, "  <div style=\"color: #e06c75; font-weight: bold;\">[ERROR] Graphviz generation failed!</div>\n");
         fprintf(log_file, "</div>\n");  // Закрываем dump-card
         fclose(log_file);
-        return TREE_CORRYPTED;
+        return TREE_DOT_CANT_OPEN;
     }
 
     fprintf(log_file, "  <div class=\"graph-container\">\n");
@@ -601,6 +721,8 @@ void tree_dump_hook(const char* name, void* ctx) {
 tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, size_t limit) {
     if (!n) return TREE_OK;
     if (++*count > limit) return TREE_WRONG_SIZE;
+    if (n->type < 0 || n->type >= NUMBER_OF_TYPES) return TREE_WRONG_NODE_TYPE;
+    if (n->type == STRING_TYPE && n->data.string_data == NULL) return TREE_WRONG_NODE_TYPE;
     if (lo && n->key <= *lo) return TREE_WRONG_KEY;
     if (hi && n->key >= *hi) return TREE_WRONG_KEY;
 
@@ -615,10 +737,10 @@ tree_err_t verify_node(Node* n, const int* lo, const int* hi, size_t* count, siz
 tree_err_t tree_verify(const Tree* t) {
     if (!t) return TREE_NULL_PTR;
     size_t count = 0;
-    if (t->root && t->root->head != NULL) return TREE_WRONG_SIZE;
+    if (t->root && t->root->head != NULL) return TREE_WRONG_HEAD;
     tree_err_t tree_err = verify_node(t->root, NULL, NULL, &count, t->size);
     if (tree_err != TREE_OK) return tree_err;
-    if (count != t->size) return TREE_WRONG_HEAD;
+    if (count != t->size) return TREE_WRONG_SIZE;
     return TREE_OK;
 }
 
@@ -628,7 +750,7 @@ tree_err_t node_inorder(FILE* o, const Node* n) {
 
     if (n->left != NULL) node_inorder(o, n->left);
     fprintf(o, "key: %d\ndata: ", n->key);
-    fprintf(o, printf_types[n->type], n->data);
+    print_data(o, n);
     fprintf(o, "\n\n");
     if (n->right != NULL) node_inorder(o, n->right);
 
@@ -668,6 +790,9 @@ int tree_height(const Node* n) {
 }
 
 int bfs(const Tree* t) {
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
+    if (t->root == NULL) return 0;
+
     int width = 1;
     list_t queue;
     list_err_t err = list_ctor(&queue, t->size);
@@ -675,7 +800,6 @@ int bfs(const Tree* t) {
 
     err = list_elem_push(&queue, t->root, queue.prev[0], NULL);
     ASSERT(err != LIST_OK);
-    width          = 1;
     int prev_width = 1;
     int next_width = 0;
 
@@ -700,6 +824,10 @@ int bfs(const Tree* t) {
         prev_width = next_width;
         next_width = 0;
     }
+
+    list_err_t list_err = list_dtor(&queue);
+    ASSERT(list_err == LIST_OK);
+
     return width;
 }
 

@@ -22,6 +22,8 @@ typedef void (*AssertDumpFn)(const char* name, void* ctx);
 /* Что вызвать перед смертью, NULL чтобы снять хук */
 void assert_set_hook(AssertDumpFn fn, void* ctx);
 
+int assert_get_place(const char** file, int* line, const char** func, const char** expr);
+
 _Noreturn void assert_fail(const char* file, int line,
                            const char* func, const char* expr,
                            const char* fmt, ...);

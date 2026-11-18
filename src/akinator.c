@@ -3,24 +3,6 @@
 
 #include "tree.h"
 
-/* VERIFY работает и в release, в отличие от ASSERT */
-/*static void insert_ok(Tree* t, int key) {
-        node_elem_t data;
-        data.string_data = "ERROR";
-        tree_err_t e     = tree_insert(t, key, STRING_TYPE, data);
-        VERIFY_MSG(e == TREE_OK, "insert %d failed, code=%d", key, e);
-    }
-
-    static void remove_ok(Tree* t, int key, char* name) {
-        tree_err_t e = tree_remove(t, key);
-        VERIFY_MSG(e == TREE_OK, "remove %d failed, code=%d", key, e);
-        VERIFY_MSG(tree_find(t, key) == NULL, "key %d still in tree", key);
-        printf("removed %-3d -> ", key);
-        tree_dump(name, t);
-        tree_dump_graph(name, t);
-    }*/
-// пока что лишнее от прошлой проги
-
 int check_bufer(void);
 void clear_bufer(void);
 tree_err_t database_choose(Tree* t, char* name);
@@ -30,28 +12,29 @@ void node_printf(Node* n);
 bool akinator_new_question(Node** p);
 void akinator_win();
 void akinator_failed(Tree* t, Node** problem_list, const char* name);
+void skip_comments(FILE* akinator_characteristic);
+void skip_end_of_line_comment(FILE* akinator_characteristic);
 
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
     tree_log_init();
 
     printf("Select a database for Akinator.\n");
-    Tree t;
+    Tree t = {0};
+    assert_set_hook(tree_dump_hook, &t);  // любой упавший ассерт сбросит дерево в лог
+
     char database_name[256] = "POISON";
     tree_err_t err          = database_choose(&t, database_name);
-    assert_set_hook(tree_dump_hook, &t);  // любой упавший ассерт сбросит дерево в лог
-    if (err != TREE_OK) {
-        printf("ERROR: Database selection failed.\n");
-        return 1;
-    }
+    ASSERT_MSG(err == TREE_OK, tree_strerror(err));
 
-    tree_dump_graph("NOW_Akinator_Database", &t);
+    err = tree_dump_graph("NOW_Akinator_Database", &t);
+    ASSERT_MSG(err == TREE_OK, tree_strerror(err));
 
     printf("======================================\nAKINATOR\n======================================\n");
 
     while (turn_on()) {
         Node* end_list = t.root;
-        
+
         bool guess_result = akinator_new_question(&end_list);
         if (guess_result) {
             akinator_win();
@@ -59,6 +42,8 @@ int main(void) {
             akinator_failed(&t, &end_list, database_name);
         }
     }
+
+    tree_destroy(&t);
 
     printf("Thank you for playing");
 
@@ -82,25 +67,26 @@ void clear_bufer(void) {
 }
 
 tree_err_t database_choose(Tree* t, char* name) {
-    //printf("I WAS HERE\n");
-    scanf("%s", name);
+    ASSERT_MSG(t != NULL, tree_strerror(TREE_NULL_PTR));
+    ASSERT_MSG(name != NULL, tree_strerror(NULL_PTR));
+
+    scanf("%255s", name);
     FILE* database = fopen(name, "r");
-    //printf("I WAS HERE\n");
+
     if (!database) {
         printf("This database does not exist.\n");
         printf("Try again: \n");
         clear_bufer();
-        fclose(database);
         return database_choose(t, name);
     } else {
         fclose(database);
-        tree_init(t);
+        TREE_INIT(t);
         printf("Selection in progress...\n");
         tree_err_t read_err = read_rpn_tree(t, name);
         printf("read_err = %d, root = %p\n", read_err, (void*)t->root);
         fflush(stdout);
         if (read_err != TREE_OK || t->root == NULL) {
-            return TREE_IO_ERROR;
+            return read_err;
         }
         return TREE_OK;
     }
@@ -131,18 +117,18 @@ char node_answer(void) {
 }
 
 void node_printf(Node* n) {
-    ASSERT(n != NULL);
+    ASSERT_MSG(n != NULL, tree_strerror(NODE_NULL_PTR));
 
     printf("%s", n->data.string_data);
     printf("?\n");
 }
 
 bool akinator_new_question(Node** p) {
-    ASSERT(p != NULL);
+    ASSERT_MSG(p != NULL, tree_strerror(NODE_NULL_PTR));
 
     node_printf(*p);
     char answer = node_answer();
-    ASSERT(answer == 'y' || answer == 'n');
+    ASSERT_MSG(answer == 'y' || answer == 'n', "error: answer in wrong format, please use y or n");
 
     if (answer == 'y') {
         if ((*p)->left == NULL) {
@@ -161,8 +147,61 @@ bool akinator_new_question(Node** p) {
     }
 }
 
+void skip_end_of_line_comment(FILE* akinator_characteristic) {
+    int symbol = fgetc(akinator_characteristic);
+    if (symbol == ' ') {
+        symbol = fgetc(akinator_characteristic);
+        if (symbol == '#') {
+            while (symbol != '\n') {
+                symbol = fgetc(akinator_characteristic);
+            }
+        }
+    }
+
+    ungetc(symbol, akinator_characteristic);
+}
+
+void skip_comments(FILE* akinator_characteristic) {
+    int symbol = fgetc(akinator_characteristic);
+    while (symbol == '#') {
+        while (symbol != '\n') {
+            symbol = fgetc(akinator_characteristic);
+        }
+        symbol = fgetc(akinator_characteristic);
+    }
+
+    ungetc(symbol, akinator_characteristic);
+}
+
 void akinator_win() {
     printf("Great! Guessed right one more time!\n");
+    FILE* akinator_characteristic = fopen("Akinator_database/akinator_characteristic.txt", "r");
+    int number_of_sucess = 0, number_of_bronze = 0, number_of_silver = 0, number_of_gold = 0;
+    skip_comments(akinator_characteristic);
+    fscanf(akinator_characteristic, "%i", &number_of_sucess);
+    skip_end_of_line_comment(akinator_characteristic);
+    skip_comments(akinator_characteristic);
+    fscanf(akinator_characteristic, "%i", &number_of_bronze);
+    skip_end_of_line_comment(akinator_characteristic);
+    skip_comments(akinator_characteristic);
+    fscanf(akinator_characteristic, "%i", &number_of_silver);
+    skip_end_of_line_comment(akinator_characteristic);
+    skip_comments(akinator_characteristic);
+    fscanf(akinator_characteristic, "%i", &number_of_gold);
+
+    number_of_sucess++;
+    printf("I won %i times\n", number_of_sucess);
+    printf("You have %i bronze medals\n", number_of_bronze);
+    printf("You have %i silver medals\n", number_of_silver);
+    printf("You have %i gold medals\n", number_of_gold);
+
+    fclose(akinator_characteristic);
+    akinator_characteristic = fopen("Akinator_database/akinator_characteristic.txt", "w");
+    fprintf(akinator_characteristic, "%i # number of sucess\n", number_of_sucess);
+    fprintf(akinator_characteristic, "%i # number of bronze\n", number_of_bronze);
+    fprintf(akinator_characteristic, "%i # number of silver\n", number_of_silver);
+    fprintf(akinator_characteristic, "%i # number of gold\n", number_of_gold);
+    fclose(akinator_characteristic);
 }
 
 void akinator_failed(Tree* t, Node** problem_list, const char* name) {
@@ -185,7 +224,7 @@ void akinator_failed(Tree* t, Node** problem_list, const char* name) {
     Node* character_node             = malloc(sizeof(Node));
     character_node->data.string_data = strdup(character);
     character_node->key              = 0;
-    character_node->type = STRING_TYPE;
+    character_node->type             = STRING_TYPE;
     character_node->left             = NULL;
     character_node->right            = NULL;
 
@@ -193,7 +232,7 @@ void akinator_failed(Tree* t, Node** problem_list, const char* name) {
     new_node->data.string_data = strdup(trait);
     new_node->head             = (*problem_list)->head;
     new_node->key              = 0;
-    new_node->type = STRING_TYPE;
+    new_node->type             = STRING_TYPE;
     new_node->left             = character_node;
     new_node->right            = *problem_list;
 
@@ -216,7 +255,9 @@ void akinator_failed(Tree* t, Node** problem_list, const char* name) {
     //Akinator_database/first_database.txt
 
     tree_renumber(t);
-    tree_dump_graph(name, t);
+    ASSERT_DUMP(tree_verify(t) == TREE_OK, tree_dump_hook, t);
+    tree_err_t graph_err = tree_dump_graph("Akinator_after_add", t);
+    ASSERT_MSG(graph_err == TREE_OK, tree_strerror(graph_err));
     tree_dump(name, t);
 
     printf("%s\n", name);
